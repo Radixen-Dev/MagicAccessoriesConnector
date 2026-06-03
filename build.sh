@@ -11,7 +11,7 @@
 #   2. Copy the printed SHA256 into the Cask file.
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 
