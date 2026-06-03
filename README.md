@@ -19,7 +19,7 @@ Apple Magic accessories pair to exactly one Mac at a time. Switching between two
 - **Bluetooth Settings shortcut** — opens the system panel automatically so you can pair manually if auto-reconnect times out
 - **Smart device filtering** — shows only Magic devices by default; toggle to see all paired Bluetooth devices
 - **Persistent preferences** — your filter choice is remembered between sessions
-- **Auto-start at login** — register as a login item with a single `brew services` command
+- **Auto-start at login** — enable from the menu bar icon with one click, no terminal needed
 
 ---
 
@@ -50,28 +50,28 @@ Follow the on-screen instructions. When it finishes, come back here.
 
 ```sh
 brew tap Radixen-Dev/tap
-brew install magic-accessories-connector
+brew install --cask magic-accessories-connector
 ```
 
-That's it. Homebrew downloads and installs everything, including the `blueutil` dependency.
+That's it. Homebrew downloads the app, installs it to `/Applications/`, and installs the `blueutil` dependency automatically.
 
 ---
 
-### Start the app
-
-**Run once (current session only):**
+### Launch the app
 
 ```sh
-magic-accessories-connector
+open /Applications/MagicAccessoriesConnector.app
 ```
 
-**Start automatically at every login (recommended):**
+A **MAC** icon appears in your menu bar.
 
-```sh
-brew services start magic-accessories-connector
-```
+> **First launch on a new Mac:** macOS Gatekeeper may show a security prompt because the app is not yet signed with an Apple certificate. Right-click the app in Finder, choose **Open**, then click **Open** in the dialog. You only need to do this once.
 
-After either command, a **MAC** icon appears in your menu bar.
+---
+
+### Start automatically at every login (recommended)
+
+Click the **MAC** icon in the menu bar, then click **Start at Login**. A checkmark confirms it's enabled. No terminal command needed.
 
 ---
 
@@ -95,6 +95,10 @@ By default, only Apple Magic devices are shown. To see every paired Bluetooth de
 To return to the filtered view:
 
 - Click **Show only Magic devices**
+
+### Start at Login
+
+Click **Start at Login** in the menu to enable auto-start. The item shows a checkmark (\u2713) when active. Click it again to disable.
 
 ### Open Bluetooth Settings directly
 
@@ -120,23 +124,35 @@ This file is created automatically the first time you change a preference. It cu
 
 ## Uninstall
 
-To remove **everything** and leave zero trace on your machine, run all four commands:
+To remove **everything** in a single command:
 
 ```sh
-brew services stop magic-accessories-connector
-brew uninstall magic-accessories-connector
-rm -rf ~/Library/Application\ Support/MagicAccessoriesConnector
-rm -f $(brew --prefix)/var/log/magic-accessories-connector.log
+brew uninstall --cask --zap magic-accessories-connector
 ```
 
-What each one does:
+The `--zap` flag instructs Homebrew to also remove:
+- The app from `/Applications/`
+- Your saved preferences (`~/Library/Application Support/MagicAccessoriesConnector/`)
+- The Start-at-Login entry (`~/Library/LaunchAgents/dev.radixen.magic-accessories-connector.plist`)
 
-1. **Stop the service** — unregisters the login item and removes the LaunchAgent plist
-2. **Uninstall the formula** — removes the app, its Python virtualenv, and all Homebrew symlinks
-3. **Remove saved preferences** — deletes `~/Library/Application Support/MagicAccessoriesConnector/`
-4. **Remove the service log** — `brew uninstall` intentionally leaves log files; this removes it
+After this command, nothing from Magic Accessories Connector remains on your machine.
 
-After these four commands, nothing from Magic Accessories Connector remains on your machine.
+If you also want to remove `blueutil`:
+
+```sh
+brew uninstall blueutil
+```
+
+Only do this if nothing else on your system uses it.
+
+### Upgrading from v1.0.0 (formula)
+
+If you installed the old formula-based v1.0.0:
+
+```sh
+brew uninstall magic-accessories-connector
+brew install --cask magic-accessories-connector
+```
 
 If you also want to remove `blueutil` (the Bluetooth CLI that MAC depends on):
 
@@ -150,22 +166,44 @@ Only do this if nothing else on your system uses it.
 
 ## Troubleshooting
 
-### The MAC icon doesn't appear in the menu bar
+### The MAC icon doesn’t appear in the menu bar
 
-macOS limits the number of visible menu bar icons. Try scrolling or checking in **System Settings → Control Center** to see if it's hidden. If using Bartender or a similar tool, check its hidden items tray.
+Check the app is running:
+
+```sh
+pgrep -x MagicAccessoriesConnector
+```
+
+If it's not running, launch it:
+
+```sh
+open /Applications/MagicAccessoriesConnector.app
+```
+
+macOS limits the number of visible menu bar icons. Also check **System Settings → Control Centre** to see if it’s hidden, or your menu bar management tool (e.g. Bartender).
+
+### The app is blocked on first launch
+
+macOS Gatekeeper will prompt on the first open because the app is not yet notarized. Right-click the app in **Finder**, choose **Open**, then click **Open** again. You only need to do this once. Alternatively:
+
+```sh
+xattr -cr /Applications/MagicAccessoriesConnector.app
+```
+
+### Start at Login stopped working
+
+If the **Start at Login** item loses its checkmark after a macOS update or system migration, disable and re-enable it from the menu.
 
 ### "blueutil not found" appears in the menu
 
-Homebrew may not be on your `PATH` in the login session. Try:
-
-```sh
-brew doctor
-```
-
-If blueutil is missing entirely:
-
 ```sh
 brew install blueutil
+```
+
+If the Cask was freshly installed and blueutil is still missing, run:
+
+```sh
+brew reinstall --cask magic-accessories-connector
 ```
 
 Then click **Refresh** in the MAC menu.
@@ -176,10 +214,10 @@ The retry window is ~12 seconds. If your device takes longer to enter pairing mo
 
 ### The app crashes or the menu is blank
 
-Check the service log:
+Check the macOS system log for the process:
 
 ```sh
-tail -50 $(brew --prefix)/var/log/magic-accessories-connector.log
+log show --predicate 'process == "MagicAccessoriesConnector"' --last 5m
 ```
 
 ---
@@ -202,15 +240,23 @@ cd MagicAccessoriesConnector
 app.py            — rumps menu bar app; all UI logic
 bluetooth.py      — blueutil subprocess wrapper; retry/connect logic
 requirements.txt  — Python dependencies (rumps only; pyobjc comes transitively)
-install.sh        — dev quick-start script
-uninstall.sh      — full removal script (handles both Homebrew and source installs)
-build.sh          — PyInstaller standalone .app builder (for future binary releases)
+build.sh          — PyInstaller .app builder + zip packager for Cask releases
 MagicAccessoriesConnector.spec — PyInstaller bundle configuration
+install.sh        — dev quick-start (source run only)
+uninstall.sh      — full removal script (handles both Cask and source installs)
 ```
+
+### Releasing a new version
+
+1. Update the version string in `MagicAccessoriesConnector.spec` (`CFBundleShortVersionString` / `CFBundleVersion`) and `build.sh` (`VERSION=`)
+2. Run `./build.sh` — it produces `dist/MagicAccessoriesConnector-<VERSION>.zip` and prints the SHA256
+3. Create a git tag: `git tag v<VERSION> && git push origin main --tags`
+4. Create a GitHub release and upload the zip as a release asset
+5. Update `version`, `sha256`, and `url` in `Casks/magic-accessories-connector.rb` in the tap repo
 
 ### Full uninstall script (dev mode)
 
-The `uninstall.sh` script handles both Homebrew-installed and source-run setups, prompting at each step:
+The `uninstall.sh` script handles both Cask-installed and source-run setups, prompting at each step:
 
 ```sh
 ./uninstall.sh           # interactive, prompts before each removal

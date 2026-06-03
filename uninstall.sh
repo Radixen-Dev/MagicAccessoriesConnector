@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # uninstall.sh — Removes all traces of MagicAccessoriesConnector from this machine.
 #
-# Handles both cases:
-#   1. Installed via Homebrew (brew install magic-accessories-connector)
-#   2. Run from source (./install.sh)
+# NOTE: End users installed via Homebrew Cask should use:
+#   brew uninstall --cask --zap magic-accessories-connector
+#   brew uninstall blueutil   # only if nothing else uses it
 #
-# Homebrew manages its own Cellar cleanup; this script additionally removes:
-#   - The brew service (LaunchAgent)
-#   - The Homebrew service log (brew uninstall does not remove this)
+# This script is for developers / anyone who also ran ./install.sh from source.
+# It handles both the Cask install remnants and dev-mode artifacts.
+#
+# Homebrew Cask manages its own /Applications cleanup; this script additionally removes:
+#   - The in-app Start-at-Login LaunchAgent (~/Library/LaunchAgents/dev.radixen.*)
 #   - User app data: ~/Library/Application Support/MagicAccessoriesConnector
 #   - Dev artifacts: .venv, build, dist, third_party, Python caches
 #   - Optionally: the Homebrew blueutil formula
@@ -75,44 +77,44 @@ done
 echo "Uninstalling MagicAccessoriesConnector..."
 echo ""
 
-# ── Step 1: Homebrew service ──────────────────────────────────────────────────
+# ── Step 1: Homebrew Cask ─────────────────────────────────────────────────────
 if command -v brew >/dev/null 2>&1; then
-  if brew list --versions magic-accessories-connector >/dev/null 2>&1; then
-    # Stop the service / LaunchAgent first.
-    if brew services list | grep -q "^magic-accessories-connector.*started"; then
-      if confirm_step "Stop brew service magic-accessories-connector?"; then
-        brew services stop magic-accessories-connector
-        echo "Stopped: brew service magic-accessories-connector"
-      else
-        echo "Warning: service still running; it may restart after uninstall."
-      fi
-    fi
+  if brew list --cask magic-accessories-connector >/dev/null 2>&1; then
+    # Quit the running app first so files are not locked.
+    pkill -x MagicAccessoriesConnector 2>/dev/null || true
 
-    if confirm_step "Uninstall Homebrew formula magic-accessories-connector?"; then
-      brew uninstall magic-accessories-connector
-      echo "Removed: Homebrew formula magic-accessories-connector"
+    if confirm_step "Uninstall Homebrew Cask magic-accessories-connector (removes /Applications)?"; then
+      # --zap removes user data via the Cask's zap stanza.
+      brew uninstall --cask --zap magic-accessories-connector
+      echo "Removed: Homebrew Cask magic-accessories-connector"
     else
-      echo "Skipped: Homebrew formula uninstall"
-    fi
-
-    # Remove the Homebrew service log — brew uninstall does NOT remove it.
-    BREW_LOG="$(brew --prefix)/var/log/magic-accessories-connector.log"
-    if [[ -f "$BREW_LOG" ]]; then
-      if confirm_step "Remove Homebrew service log at $BREW_LOG?"; then
-        rm -f "$BREW_LOG"
-        echo "Removed: $BREW_LOG"
-      else
-        echo "Kept: $BREW_LOG"
-      fi
+      echo "Skipped: Homebrew Cask uninstall"
     fi
   else
-    echo "Info: magic-accessories-connector is not installed via Homebrew; skipping formula removal."
+    echo "Info: magic-accessories-connector is not installed as a Homebrew Cask."
   fi
 else
-  echo "Info: Homebrew not found; skipping formula removal."
+  echo "Info: Homebrew not found; skipping Cask removal."
 fi
 
-# ── Step 2: User app data ─────────────────────────────────────────────────────
+# ── Step 2: Start-at-Login LaunchAgent ───────────────────────────────────────
+# Created by the app itself when the user enables "Start at Login" in the menu.
+# The Cask --zap stanza also removes this, but check anyway in case zap was skipped.
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/dev.radixen.magic-accessories-connector.plist"
+if [[ -f "$LAUNCH_AGENT" ]]; then
+  launchctl unload "$LAUNCH_AGENT" 2>/dev/null || true
+  if confirm_step "Remove Start-at-Login LaunchAgent ($LAUNCH_AGENT)?"; then
+    rm -f "$LAUNCH_AGENT"
+    echo "Removed: LaunchAgent"
+  else
+    echo "Kept: LaunchAgent"
+  fi
+else
+  echo "Info: No Start-at-Login LaunchAgent found."
+fi
+
+
+# ── Step 3: User app data ─────────────────────────────────────────────────────
 APP_SUPPORT_DIR="$HOME/Library/Application Support/MagicAccessoriesConnector"
 if [[ -d "$APP_SUPPORT_DIR" ]]; then
   if confirm_step "Remove saved app data at ~/Library/Application Support/MagicAccessoriesConnector?"; then
@@ -122,10 +124,10 @@ if [[ -d "$APP_SUPPORT_DIR" ]]; then
     echo "Kept: ~/Library/Application Support/MagicAccessoriesConnector"
   fi
 else
-  echo "Info: No saved app data found at ~/Library/Application Support/MagicAccessoriesConnector"
+  echo "Info: No saved app data found."
 fi
 
-# ── Step 3: Dev-mode artifacts (only present if run via ./install.sh) ─────────
+# ── Step 4: Dev-mode artifacts (only present if run via ./install.sh) ─────────
 DEV_TARGETS=(".venv" "build" "dist" "third_party")
 for target in "${DEV_TARGETS[@]}"; do
   if [[ -e "$ROOT_DIR/$target" ]]; then
@@ -138,7 +140,7 @@ for target in "${DEV_TARGETS[@]}"; do
   fi
 done
 
-# ── Step 4: Python bytecode caches ───────────────────────────────────────────
+# ── Step 5: Python bytecode caches ───────────────────────────────────────────
 PYCACHE_FOUND=0
 if find "$ROOT_DIR" -type d -name "__pycache__" 2>/dev/null | grep -q .; then
   PYCACHE_FOUND=1
@@ -157,7 +159,7 @@ if [[ "$PYCACHE_FOUND" -eq 1 ]]; then
   fi
 fi
 
-# ── Step 5: Homebrew blueutil (optional) ─────────────────────────────────────
+# ── Step 6: Homebrew blueutil (optional) ─────────────────────────────────────
 if [[ "$REMOVE_BLUEUTIL" -eq 1 ]]; then
   if command -v brew >/dev/null 2>&1; then
     if brew list --versions blueutil >/dev/null 2>&1; then
@@ -168,7 +170,7 @@ if [[ "$REMOVE_BLUEUTIL" -eq 1 ]]; then
         echo "Kept: Homebrew formula blueutil"
       fi
     else
-      echo "Info: Homebrew is present but blueutil is not installed via it."
+      echo "Info: blueutil is not installed via Homebrew."
     fi
   else
     echo "Info: Homebrew not found; skipping blueutil removal."

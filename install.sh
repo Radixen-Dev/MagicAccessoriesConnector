@@ -3,8 +3,8 @@
 #
 # End-user installation (recommended):
 #   brew tap Radixen-Dev/tap
-#   brew install magic-accessories-connector
-#   brew services start magic-accessories-connector
+#   brew install --cask magic-accessories-connector
+#   Then launch from /Applications or click “Start at Login” in the menu.
 #
 # This script is for contributors running the app directly from source.
 set -euo pipefail
