@@ -46,5 +46,6 @@ app = BUNDLE(
         'LSUIElement': True,
         'NSHighResolutionCapable': True,
         'NSPrincipalClass': 'NSApplication',
+        'NSBluetoothAlwaysUsageDescription': 'Magic Accessories Connector needs Bluetooth access to forget and reconnect your Magic devices.',
     },
 )
