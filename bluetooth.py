@@ -33,6 +33,13 @@ def _candidate_blueutil_paths() -> List[Path]:
         base = Path(meipass)
         candidates.extend([base / "blueutil", base / "Resources" / "blueutil"])
 
+    # GUI apps on macOS launch with a minimal PATH that excludes Homebrew.
+    # Add both standard Homebrew prefixes explicitly before falling back to which().
+    candidates.extend([
+        Path("/opt/homebrew/bin/blueutil"),  # Apple Silicon
+        Path("/usr/local/bin/blueutil"),     # Intel
+    ])
+
     which_path = shutil.which("blueutil")
     if which_path:
         candidates.append(Path(which_path))
