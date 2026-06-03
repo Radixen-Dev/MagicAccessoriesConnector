@@ -59,7 +59,7 @@ def _set_start_at_login(enabled: bool) -> None:
 
 class MagicAccessoriesConnectorApp(rumps.App):
     def __init__(self) -> None:
-        super().__init__("MAC")
+        super().__init__("MAC", quit_button=None)
         self.show_all_devices = False
         self._load_prefs()
         self.refresh_menu()
