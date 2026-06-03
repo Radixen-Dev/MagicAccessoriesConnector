@@ -43,7 +43,7 @@ def _set_start_at_login(enabled: bool) -> None:
             "ProgramArguments": [sys.executable],
             "EnvironmentVariables": {"OBJC_DISABLE_INITIALIZE_FORK_SAFETY": "YES"},
             "RunAtLoad": True,
-            "KeepAlive": True,
+            "KeepAlive": False,
         }
         LAUNCH_AGENT_PLIST.parent.mkdir(parents=True, exist_ok=True)
         with open(LAUNCH_AGENT_PLIST, "wb") as fh:
@@ -238,7 +238,7 @@ class MagicAccessoriesConnectorApp(rumps.App):
         self.menu.add(rumps.MenuItem("Open Bluetooth Settings", callback=self._open_settings_clicked))
         self.menu.add(rumps.MenuItem("Refresh", callback=self._refresh_clicked))
         if getattr(sys, "frozen", False):
-            login_label = "\u2713 Start at Login" if _is_start_at_login_enabled() else "Start at Login"
+            login_label = "Stop at Login" if _is_start_at_login_enabled() else "Start at Login"
             self.menu.add(rumps.MenuItem(login_label, callback=self._toggle_start_at_login))
         self.menu.add(rumps.MenuItem("Quit", callback=self._quit_app))
 
