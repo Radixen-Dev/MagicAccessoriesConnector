@@ -1,32 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
-
-from pathlib import Path
-
-block_cipher = None
-project_root = Path(__file__).parent.resolve()
-
-blueutil_src = project_root / "third_party" / "blueutil"
-binaries = []
-if blueutil_src.exists():
-    binaries.append((str(blueutil_src), "."))
-
+# Distributes as a Homebrew Cask — blueutil is a declared Homebrew dependency,
+# not bundled inside the .app.
 
 a = Analysis(
     ['app.py'],
-    pathex=[str(project_root)],
-    binaries=binaries,
+    pathex=[],
+    binaries=[],
     datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    cipher=None,
     noarchive=False,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 
 exe = EXE(
     pyz,
@@ -48,5 +37,14 @@ app = BUNDLE(
     exe,
     name='MagicAccessoriesConnector.app',
     icon=None,
-    bundle_identifier='com.example.magicaccessoriesconnector',
+    bundle_identifier='dev.radixen.magic-accessories-connector',
+    info_plist={
+        'CFBundleName': 'MagicAccessoriesConnector',
+        'CFBundleDisplayName': 'Magic Accessories Connector',
+        'CFBundleShortVersionString': '1.1.0',
+        'CFBundleVersion': '1.1.0',
+        'LSUIElement': True,
+        'NSHighResolutionCapable': True,
+        'NSPrincipalClass': 'NSApplication',
+    },
 )

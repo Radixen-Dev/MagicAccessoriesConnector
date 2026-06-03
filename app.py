@@ -1,6 +1,8 @@
 import json
 import os
+import plistlib
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -17,6 +19,42 @@ from bluetooth import (
 
 CONFIG_DIR = Path.home() / "Library" / "Application Support" / "MagicAccessoriesConnector"
 PREFS_FILE = CONFIG_DIR / "prefs.json"
+
+LAUNCH_AGENT_LABEL = "dev.radixen.magic-accessories-connector"
+LAUNCH_AGENT_PLIST = (
+    Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
+)
+
+
+def _is_start_at_login_enabled() -> bool:
+    return LAUNCH_AGENT_PLIST.exists()
+
+
+def _set_start_at_login(enabled: bool) -> None:
+    if enabled:
+        plist_data: dict = {
+            "Label": LAUNCH_AGENT_LABEL,
+            "ProgramArguments": [sys.executable],
+            "EnvironmentVariables": {"OBJC_DISABLE_INITIALIZE_FORK_SAFETY": "YES"},
+            "RunAtLoad": True,
+            "KeepAlive": True,
+        }
+        LAUNCH_AGENT_PLIST.parent.mkdir(parents=True, exist_ok=True)
+        with open(LAUNCH_AGENT_PLIST, "wb") as fh:
+            plistlib.dump(plist_data, fh)
+        subprocess.run(
+            ["launchctl", "load", str(LAUNCH_AGENT_PLIST)],
+            check=False,
+            capture_output=True,
+        )
+    else:
+        if LAUNCH_AGENT_PLIST.exists():
+            subprocess.run(
+                ["launchctl", "unload", str(LAUNCH_AGENT_PLIST)],
+                check=False,
+                capture_output=True,
+            )
+            LAUNCH_AGENT_PLIST.unlink(missing_ok=True)
 
 
 class MagicAccessoriesConnectorApp(rumps.App):
@@ -140,6 +178,9 @@ class MagicAccessoriesConnectorApp(rumps.App):
         self.menu.add(rumps.MenuItem(toggle_label, callback=self._toggle_filter))
         self.menu.add(rumps.MenuItem("Open Bluetooth Settings", callback=self._open_settings_clicked))
         self.menu.add(rumps.MenuItem("Refresh", callback=self._refresh_clicked))
+        if getattr(sys, "frozen", False):
+            login_label = "\u2713 Start at Login" if _is_start_at_login_enabled() else "Start at Login"
+            self.menu.add(rumps.MenuItem(login_label, callback=self._toggle_start_at_login))
         self.menu.add(rumps.MenuItem("Quit", callback=self._quit_app))
 
     def _install_help(self, _: rumps.MenuItem) -> None:
@@ -158,6 +199,10 @@ class MagicAccessoriesConnectorApp(rumps.App):
         self._open_bluetooth_settings()
 
     def _refresh_clicked(self, _: rumps.MenuItem) -> None:
+        self.refresh_menu()
+
+    def _toggle_start_at_login(self, _: rumps.MenuItem) -> None:
+        _set_start_at_login(not _is_start_at_login_enabled())
         self.refresh_menu()
 
     def _quit_app(self, _: rumps.MenuItem) -> None:
