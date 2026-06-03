@@ -65,8 +65,6 @@ open /Applications/MagicAccessoriesConnector.app
 
 A **MAC** icon appears in your menu bar.
 
-> **First launch on a new Mac:** macOS Gatekeeper may show a security prompt because the app is not yet signed with an Apple certificate. Right-click the app in Finder, choose **Open**, then click **Open** in the dialog. You only need to do this once.
-
 ---
 
 ### Start automatically at every login (recommended)
@@ -181,14 +179,6 @@ open /Applications/MagicAccessoriesConnector.app
 ```
 
 macOS limits the number of visible menu bar icons. Also check **System Settings → Control Centre** to see if it’s hidden, or your menu bar management tool (e.g. Bartender).
-
-### The app is blocked on first launch
-
-macOS Gatekeeper will prompt on the first open because the app is not yet notarized. Right-click the app in **Finder**, choose **Open**, then click **Open** again. You only need to do this once. Alternatively:
-
-```sh
-xattr -cr /Applications/MagicAccessoriesConnector.app
-```
 
 ### Start at Login stopped working
 
