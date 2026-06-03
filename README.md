@@ -120,25 +120,23 @@ This file is created automatically the first time you change a preference. It cu
 
 ## Uninstall
 
-To remove **everything** — the app, its login item, and all saved preferences:
+To remove **everything** and leave zero trace on your machine, run all four commands:
 
 ```sh
 brew services stop magic-accessories-connector
 brew uninstall magic-accessories-connector
 rm -rf ~/Library/Application\ Support/MagicAccessoriesConnector
+rm -f $(brew --prefix)/var/log/magic-accessories-connector.log
 ```
 
-The three commands do the following, in order:
+What each one does:
 
-1. **Stop the service** — removes the LaunchAgent so the app no longer starts at login
-2. **Uninstall the formula** — removes the app binary and its Python virtualenv from Homebrew's Cellar
-3. **Remove saved preferences** — deletes the app data folder
+1. **Stop the service** — unregisters the login item and removes the LaunchAgent plist
+2. **Uninstall the formula** — removes the app, its Python virtualenv, and all Homebrew symlinks
+3. **Remove saved preferences** — deletes `~/Library/Application Support/MagicAccessoriesConnector/`
+4. **Remove the service log** — `brew uninstall` intentionally leaves log files; this removes it
 
-> `brew uninstall` does **not** remove the service log. To remove it too:
-> ```sh
-> rm -f $(brew --prefix)/var/log/magic-accessories-connector.log
-> ```
-> After that, nothing else is left on your machine.
+After these four commands, nothing from Magic Accessories Connector remains on your machine.
 
 If you also want to remove `blueutil` (the Bluetooth CLI that MAC depends on):
 
