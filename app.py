@@ -1,0 +1,169 @@
+import json
+import os
+import subprocess
+from pathlib import Path
+from typing import Dict, List
+
+import rumps
+
+from bluetooth import (
+    BlueutilError,
+    is_blueutil_available,
+    list_paired_devices,
+    try_pair_and_connect_with_retries,
+    unpair_device,
+)
+
+
+CONFIG_DIR = Path.home() / "Library" / "Application Support" / "MagicAccessoriesConnector"
+PREFS_FILE = CONFIG_DIR / "prefs.json"
+
+
+class MagicAccessoriesConnectorApp(rumps.App):
+    def __init__(self) -> None:
+        super().__init__("MAC")
+        self.show_all_devices = False
+        self._load_prefs()
+        self.refresh_menu()
+
+    def _load_prefs(self) -> None:
+        if not PREFS_FILE.exists():
+            return
+
+        try:
+            payload = json.loads(PREFS_FILE.read_text(encoding="utf-8"))
+            self.show_all_devices = bool(payload.get("show_all_devices", False))
+        except (json.JSONDecodeError, OSError):
+            self.show_all_devices = False
+
+    def _save_prefs(self) -> None:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {"show_all_devices": self.show_all_devices}
+        PREFS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def _filtered_devices(self, devices: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        if self.show_all_devices:
+            return devices
+
+        filtered = [device for device in devices if "magic" in device["name"].lower()]
+        return filtered
+
+    def _open_bluetooth_settings(self) -> None:
+        subprocess.run(
+            ["open", "x-apple.systempreferences:com.apple.BluetoothSettings"],
+            check=False,
+            capture_output=True,
+        )
+
+    def _forget_and_reconnect_flow(self, address: str, name: str) -> None:
+        try:
+            unpair_device(address)
+            self._open_bluetooth_settings()
+            rumps.notification(
+                title="Device forgotten",
+                subtitle=name,
+                message=(
+                    "Put it in pairing mode now. Trying auto-reconnect for about 12 seconds."
+                ),
+            )
+
+            connected, last_error = try_pair_and_connect_with_retries(
+                address=address,
+                attempts=6,
+                delay_seconds=2.0,
+            )
+            if connected:
+                rumps.notification(
+                    title="Auto-reconnect succeeded",
+                    subtitle=name,
+                    message="Device paired and connected.",
+                )
+            else:
+                message = (
+                    "Could not auto-reconnect in time. Keep Bluetooth Settings open and pair manually."
+                )
+                if last_error:
+                    message = f"{message}\n\nLast error: {last_error}"
+                rumps.alert(
+                    title="Auto-reconnect timed out",
+                    message=message,
+                    ok="OK",
+                )
+        except BlueutilError as exc:
+            rumps.alert(
+                title="Could not forget device",
+                message=str(exc),
+                ok="OK",
+            )
+        finally:
+            self.refresh_menu()
+
+    def _on_forget(self, _: rumps.MenuItem, address: str, name: str) -> None:
+        self._forget_and_reconnect_flow(address, name)
+
+    def refresh_menu(self) -> None:
+        self.menu.clear()
+
+        if not is_blueutil_available():
+            self.menu.add(rumps.MenuItem("blueutil not found"))
+            self.menu.add(rumps.MenuItem("Install blueutil", callback=self._install_help))
+            self.menu.add(None)
+            self.menu.add(rumps.MenuItem("Quit", callback=self._quit_app))
+            return
+
+        try:
+            paired_devices = list_paired_devices()
+            visible_devices = self._filtered_devices(paired_devices)
+        except BlueutilError as exc:
+            self.menu.add(rumps.MenuItem(f"Error: {exc}"))
+            self.menu.add(None)
+            self.menu.add(rumps.MenuItem("Refresh", callback=self._refresh_clicked))
+            self.menu.add(rumps.MenuItem("Quit", callback=self._quit_app))
+            return
+
+        if not visible_devices:
+            self.menu.add(rumps.MenuItem("No matching paired devices"))
+        else:
+            for device in visible_devices:
+                name = device["name"]
+                address = device["address"]
+                label = f"Forget + Reconnect: {name} ({address})"
+                self.menu.add(
+                    rumps.MenuItem(
+                        label,
+                        callback=lambda item, a=address, n=name: self._on_forget(item, a, n),
+                    )
+                )
+
+        self.menu.add(None)
+        toggle_label = "Show only Magic devices" if self.show_all_devices else "Show all paired devices"
+        self.menu.add(rumps.MenuItem(toggle_label, callback=self._toggle_filter))
+        self.menu.add(rumps.MenuItem("Open Bluetooth Settings", callback=self._open_settings_clicked))
+        self.menu.add(rumps.MenuItem("Refresh", callback=self._refresh_clicked))
+        self.menu.add(rumps.MenuItem("Quit", callback=self._quit_app))
+
+    def _install_help(self, _: rumps.MenuItem) -> None:
+        rumps.alert(
+            title="blueutil missing",
+            message="Install blueutil, then restart this app.\n\nHomebrew: brew install blueutil",
+            ok="OK",
+        )
+
+    def _toggle_filter(self, _: rumps.MenuItem) -> None:
+        self.show_all_devices = not self.show_all_devices
+        self._save_prefs()
+        self.refresh_menu()
+
+    def _open_settings_clicked(self, _: rumps.MenuItem) -> None:
+        self._open_bluetooth_settings()
+
+    def _refresh_clicked(self, _: rumps.MenuItem) -> None:
+        self.refresh_menu()
+
+    def _quit_app(self, _: rumps.MenuItem) -> None:
+        rumps.quit_application()
+
+
+if __name__ == "__main__":
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
+    MagicAccessoriesConnectorApp().run()
