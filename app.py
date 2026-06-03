@@ -238,7 +238,7 @@ class MagicAccessoriesConnectorApp(rumps.App):
         self.menu.add(rumps.MenuItem("Open Bluetooth Settings", callback=self._open_settings_clicked))
         self.menu.add(rumps.MenuItem("Refresh", callback=self._refresh_clicked))
         if getattr(sys, "frozen", False):
-            login_label = "Stop at Login" if _is_start_at_login_enabled() else "Start at Login"
+            login_label = "Don't Start at Login" if _is_start_at_login_enabled() else "Start at Login"
             self.menu.add(rumps.MenuItem(login_label, callback=self._toggle_start_at_login))
         self.menu.add(rumps.MenuItem("Quit", callback=self._quit_app))
 
