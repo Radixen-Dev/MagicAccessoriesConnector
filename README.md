@@ -134,7 +134,11 @@ The three commands do the following, in order:
 2. **Uninstall the formula** — removes the app binary and its Python virtualenv from Homebrew's Cellar
 3. **Remove saved preferences** — deletes the app data folder
 
-> Nothing else is left on your machine.
+> `brew uninstall` does **not** remove the service log. To remove it too:
+> ```sh
+> rm -f $(brew --prefix)/var/log/magic-accessories-connector.log
+> ```
+> After that, nothing else is left on your machine.
 
 If you also want to remove `blueutil` (the Bluetooth CLI that MAC depends on):
 

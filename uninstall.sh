@@ -7,6 +7,7 @@
 #
 # Homebrew manages its own Cellar cleanup; this script additionally removes:
 #   - The brew service (LaunchAgent)
+#   - The Homebrew service log (brew uninstall does not remove this)
 #   - User app data: ~/Library/Application Support/MagicAccessoriesConnector
 #   - Dev artifacts: .venv, build, dist, third_party, Python caches
 #   - Optionally: the Homebrew blueutil formula
@@ -92,6 +93,17 @@ if command -v brew >/dev/null 2>&1; then
       echo "Removed: Homebrew formula magic-accessories-connector"
     else
       echo "Skipped: Homebrew formula uninstall"
+    fi
+
+    # Remove the Homebrew service log — brew uninstall does NOT remove it.
+    BREW_LOG="$(brew --prefix)/var/log/magic-accessories-connector.log"
+    if [[ -f "$BREW_LOG" ]]; then
+      if confirm_step "Remove Homebrew service log at $BREW_LOG?"; then
+        rm -f "$BREW_LOG"
+        echo "Removed: $BREW_LOG"
+      else
+        echo "Kept: $BREW_LOG"
+      fi
     fi
   else
     echo "Info: magic-accessories-connector is not installed via Homebrew; skipping formula removal."
