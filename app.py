@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Dict, List
 
 import rumps
+from Foundation import NSOperationQueue
 
 from bluetooth import (
     BlueutilError,
     connect_device,
+    is_already_paired_error,
     is_blueutil_available,
     is_device_connected,
     list_paired_devices,
@@ -65,6 +67,8 @@ class MagicAccessoriesConnectorApp(rumps.App):
     def __init__(self) -> None:
         super().__init__("MAC", quit_button=None)
         self.show_all_devices = False
+        self._reconnecting = False
+        self._reconnect_lock = threading.Lock()
         self._load_prefs()
         self.refresh_menu()
 
@@ -97,84 +101,97 @@ class MagicAccessoriesConnectorApp(rumps.App):
             capture_output=True,
         )
 
+    def _dispatch_to_main(self, fn) -> None:
+        """Schedule fn() on the main thread via NSOperationQueue."""
+        NSOperationQueue.mainQueue().addOperationWithBlock_(fn)
+
     def _forget_and_reconnect_flow(self, address: str, name: str) -> None:
         ATTEMPTS = 6
         DELAY = 2  # seconds between attempts
 
         try:
-            unpair_device(address)
-            self._open_bluetooth_settings()
-            rumps.notification(
-                title="Device forgotten",
-                subtitle=name,
-                message="Put it in pairing mode now. Trying auto-reconnect for about 12 seconds.",
-            )
-        except BlueutilError as exc:
-            self._show_error_title()
-            rumps.alert(title="Could not forget device", message=str(exc), ok="OK")
-            self.refresh_menu()
-            return
-
-        has_paired = False
-        last_error = None
-        connected = False
-
-        for attempt in range(ATTEMPTS):
-            self.title = "●"
-
-            if not has_paired:
-                try:
-                    pair_device(address)
-                    has_paired = True
-                except BlueutilError as exc:
-                    msg = str(exc)
-                    if "already" in msg.lower() and "pair" in msg.lower():
-                        has_paired = True
-                    else:
-                        last_error = msg
-                        self._countdown(DELAY, skip=(attempt == ATTEMPTS - 1))
-                        continue
-
             try:
-                connect_device(address)
-                if is_device_connected(address):
-                    connected = True
-                    break
-                last_error = "Pair/connect ran but device is not connected yet"
+                unpair_device(address)
+                self._open_bluetooth_settings()
+                self._dispatch_to_main(lambda: rumps.notification(
+                    title="Device forgotten",
+                    subtitle=name,
+                    message="Put it in pairing mode now. Trying auto-reconnect for about 12 seconds.",
+                ))
             except BlueutilError as exc:
-                last_error = str(exc)
+                error_msg = str(exc)
+                self._dispatch_to_main(lambda: setattr(self, 'title', '!'))
+                time.sleep(2)
+                self._dispatch_to_main(lambda: rumps.alert(
+                    title="Could not forget device", message=error_msg, ok="OK"
+                ))
+                return
 
-            self._countdown(DELAY, skip=(attempt == ATTEMPTS - 1))
+            has_paired = False
+            last_error = None
+            connected = False
 
-        if connected:
-            self.title = "MAC"
-            self.refresh_menu()
-            rumps.notification(
-                title="Auto-reconnect succeeded",
-                subtitle=name,
-                message="Device paired and connected.",
-            )
-        else:
-            self._show_error_title()
-            self.refresh_menu()
-            message = "Could not auto-reconnect in time. Keep Bluetooth Settings open and pair manually."
-            if last_error:
-                message = f"{message}\n\nLast error: {last_error}"
-            rumps.alert(title="Auto-reconnect timed out", message=message, ok="OK")
+            for attempt in range(ATTEMPTS):
+                self._dispatch_to_main(lambda: setattr(self, 'title', '●'))
 
-    def _countdown(self, seconds: int, skip: bool = False) -> None:
-        if skip:
-            return
+                if not has_paired:
+                    try:
+                        pair_device(address)
+                        has_paired = True
+                    except BlueutilError as exc:
+                        msg = str(exc)
+                        if is_already_paired_error(msg):
+                            has_paired = True
+                        else:
+                            last_error = msg
+                            if attempt < ATTEMPTS - 1:
+                                self._countdown(DELAY)
+                            continue
+
+                try:
+                    connect_device(address)
+                    if is_device_connected(address):
+                        connected = True
+                        break
+                    last_error = "Pair/connect ran but device is not connected yet"
+                except BlueutilError as exc:
+                    last_error = str(exc)
+
+                if attempt < ATTEMPTS - 1:
+                    self._countdown(DELAY)
+
+            if connected:
+                self._dispatch_to_main(lambda: rumps.notification(
+                    title="Auto-reconnect succeeded",
+                    subtitle=name,
+                    message="Device paired and connected.",
+                ))
+            else:
+                failure_msg = "Could not auto-reconnect in time. Keep Bluetooth Settings open and pair manually."
+                if last_error:
+                    failure_msg = f"{failure_msg}\n\nLast error: {last_error}"
+                self._dispatch_to_main(lambda: setattr(self, 'title', '!'))
+                time.sleep(2)
+                self._dispatch_to_main(lambda: rumps.alert(
+                    title="Auto-reconnect timed out", message=failure_msg, ok="OK"
+                ))
+
+        finally:
+            with self._reconnect_lock:
+                self._reconnecting = False
+            self._dispatch_to_main(lambda: setattr(self, 'title', 'MAC'))
+            self._dispatch_to_main(self.refresh_menu)
+
+    def _countdown(self, seconds: int) -> None:
         for remaining in range(seconds, 0, -1):
-            self.title = str(remaining)
+            self._dispatch_to_main(lambda r=remaining: setattr(self, 'title', str(r)))
             time.sleep(1)
 
-    def _show_error_title(self) -> None:
-        self.title = "!"
-        time.sleep(2)
-        self.title = "MAC"
-
     def _on_forget(self, _: rumps.MenuItem, address: str, name: str) -> None:
+        with self._reconnect_lock:
+            if self._reconnecting:
+                return
+            self._reconnecting = True
         threading.Thread(
             target=self._forget_and_reconnect_flow,
             args=(address, name),

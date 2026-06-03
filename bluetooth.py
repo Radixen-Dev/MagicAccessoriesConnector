@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 
 class BlueutilError(RuntimeError):
@@ -125,44 +125,9 @@ def is_device_connected(address: str) -> bool:
     return result.stdout.strip() == "1"
 
 
-def _is_already_paired_error(message: str) -> bool:
+def is_already_paired_error(message: str) -> bool:
     lowered = message.lower()
     return "already" in lowered and "pair" in lowered
-
-
-def try_pair_and_connect_with_retries(
-    address: str,
-    attempts: int = 6,
-    delay_seconds: float = 2.0,
-) -> Tuple[bool, Optional[str]]:
-    last_error: Optional[str] = None
-    has_paired = False
-
-    for _ in range(attempts):
-        # Pair until it succeeds once; after that, keep retrying connect.
-        try:
-            if not has_paired:
-                pair_device(address)
-                has_paired = True
-        except BlueutilError as exc:
-            if _is_already_paired_error(str(exc)):
-                has_paired = True
-            else:
-                last_error = str(exc)
-                time.sleep(delay_seconds)
-                continue
-
-        try:
-            connect_device(address)
-            if is_device_connected(address):
-                return True, None
-            last_error = "Pair/connect command ran, but device is not connected yet"
-        except BlueutilError as exc:
-            last_error = str(exc)
-
-        time.sleep(delay_seconds)
-
-    return False, last_error
 
 
 def is_blueutil_available() -> bool:
