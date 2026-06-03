@@ -41,8 +41,8 @@ app = BUNDLE(
     info_plist={
         'CFBundleName': 'MagicAccessoriesConnector',
         'CFBundleDisplayName': 'Magic Accessories Connector',
-        'CFBundleShortVersionString': '1.2.0',
-        'CFBundleVersion': '1.2.0',
+        'CFBundleShortVersionString': '1.2.1',
+        'CFBundleVersion': '1.2.1',
         'LSUIElement': True,
         'NSHighResolutionCapable': True,
         'NSPrincipalClass': 'NSApplication',
