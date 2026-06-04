@@ -109,6 +109,10 @@ class MagicAccessoriesConnectorApp(rumps.App):
         ATTEMPTS = 6
         DELAY = 2  # seconds between attempts
 
+        connected = False
+        last_error = None
+        unpair_error_msg = None
+
         try:
             try:
                 unpair_device(address)
@@ -119,68 +123,81 @@ class MagicAccessoriesConnectorApp(rumps.App):
                     message="Put it in pairing mode now. Trying auto-reconnect for about 12 seconds.",
                 ))
             except BlueutilError as exc:
-                error_msg = str(exc)
-                self._dispatch_to_main(lambda: setattr(self, 'title', '!'))
-                time.sleep(2)
-                self._dispatch_to_main(lambda: rumps.alert(
-                    title="Could not forget device", message=error_msg, ok="OK"
-                ))
-                return
+                unpair_error_msg = str(exc)
 
-            has_paired = False
-            last_error = None
-            connected = False
+            if unpair_error_msg is None:
+                has_paired = False
 
-            for attempt in range(ATTEMPTS):
-                self._dispatch_to_main(lambda: setattr(self, 'title', '●'))
+                for attempt in range(ATTEMPTS):
+                    self._dispatch_to_main(lambda: setattr(self, 'title', '●'))
 
-                if not has_paired:
-                    try:
-                        pair_device(address)
-                        has_paired = True
-                    except BlueutilError as exc:
-                        msg = str(exc)
-                        if is_already_paired_error(msg):
+                    if not has_paired:
+                        try:
+                            pair_device(address)
                             has_paired = True
-                        else:
-                            last_error = msg
-                            if attempt < ATTEMPTS - 1:
-                                self._countdown(DELAY)
-                            continue
+                        except BlueutilError as exc:
+                            msg = str(exc)
+                            if is_already_paired_error(msg):
+                                has_paired = True
+                            else:
+                                last_error = msg
+                                if attempt < ATTEMPTS - 1:
+                                    self._countdown(DELAY)
+                                continue
 
-                try:
-                    connect_device(address)
-                    if is_device_connected(address):
-                        connected = True
-                        break
-                    last_error = "Pair/connect ran but device is not connected yet"
-                except BlueutilError as exc:
-                    last_error = str(exc)
+                    try:
+                        connect_device(address)
+                        if is_device_connected(address):
+                            connected = True
+                            break
+                        last_error = "Pair/connect ran but device is not connected yet"
+                    except BlueutilError as exc:
+                        last_error = str(exc)
 
-                if attempt < ATTEMPTS - 1:
-                    self._countdown(DELAY)
-
-            if connected:
-                self._dispatch_to_main(lambda: rumps.notification(
-                    title="Auto-reconnect succeeded",
-                    subtitle=name,
-                    message="Device paired and connected.",
-                ))
-            else:
-                failure_msg = "Could not auto-reconnect in time. Keep Bluetooth Settings open and pair manually."
-                if last_error:
-                    failure_msg = f"{failure_msg}\n\nLast error: {last_error}"
-                self._dispatch_to_main(lambda: setattr(self, 'title', '!'))
-                time.sleep(2)
-                self._dispatch_to_main(lambda: rumps.alert(
-                    title="Auto-reconnect timed out", message=failure_msg, ok="OK"
-                ))
+                    if attempt < ATTEMPTS - 1:
+                        self._countdown(DELAY)
 
         finally:
             with self._reconnect_lock:
                 self._reconnecting = False
-            self._dispatch_to_main(lambda: setattr(self, 'title', 'MAC'))
-            self._dispatch_to_main(self.refresh_menu)
+
+            # Capture loop locals for the closure — the background thread exits
+            # immediately after dispatching; the closure must carry its own copies.
+            _unpair_err = unpair_error_msg
+            _connected = connected
+            _last_err = last_error
+
+            if _connected:
+                def _finish():
+                    rumps.notification(
+                        title="Auto-reconnect succeeded",
+                        subtitle=name,
+                        message="Device paired and connected.",
+                    )
+                    self.title = 'MAC'
+                    self.refresh_menu()
+            elif _unpair_err:
+                def _finish():
+                    self.title = '!'
+                    # alert blocks until OK — cleanup runs after, not during
+                    rumps.alert(title="Could not forget device", message=_unpair_err, ok="OK")
+                    self.title = 'MAC'
+                    self.refresh_menu()
+            else:
+                failure_msg = (
+                    "Could not auto-reconnect in time. "
+                    "Keep Bluetooth Settings open and pair manually."
+                )
+                if _last_err:
+                    failure_msg = f"{failure_msg}\n\nLast error: {_last_err}"
+                def _finish():
+                    self.title = '!'
+                    # alert blocks until OK — cleanup runs after, not during
+                    rumps.alert(title="Auto-reconnect timed out", message=failure_msg, ok="OK")
+                    self.title = 'MAC'
+                    self.refresh_menu()
+
+            self._dispatch_to_main(_finish)
 
     def _countdown(self, seconds: int) -> None:
         for remaining in range(seconds, 0, -1):
